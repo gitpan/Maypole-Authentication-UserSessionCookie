@@ -1,7 +1,7 @@
 package Maypole::Authentication::UserSessionCookie;
 use strict;
 use warnings;
-our $VERSION = '1.1';
+our $VERSION = '1.2';
 use Apache::Cookie;
 
 =head1 NAME
@@ -27,9 +27,9 @@ Maypole::Authentication::UserSessionCookie - Track sessions and, optionally, use
 This module allows Maypole applications to have the concept of a user,
 and to track that user using cookies and sessions.
 
-It provides three methods to be inherited by a Maypole class. The first is
-C<get_user>, which tries to populate the C<user> slot of the Maypole request
-object.
+It provides a number of methods to be inherited by a Maypole class. The
+first is C<get_user>, which tries to populate the C<user> slot of the
+Maypole request object.
 
 =head2 get_user
 
@@ -53,16 +53,35 @@ sub get_user {
     my %jar = Apache::Cookie->new($ar)->parse;
     my $cookie_name = $r->config->{auth}{cookie_name} || "sessionid";
     if (exists $jar{$cookie_name}) { $sid = $jar{$cookie_name}->value(); }
+    warn "SID from cookie: $sid";
     $sid = undef unless $sid; # Clear it, as 0 is a valid sid.
-    my %session = ();
     my $new = !(defined $sid);
     my ($uid, $user);
 
     if ($new) {
         # Go no further unless login credentials are right.
         ($uid, $r->{user}) = $r->check_credentials;
+        warn "Credentials OK";
         return 0 unless $uid;
     }
+    warn "Giving cookie";
+    $r->login_user($uid, $sid) or return 0;
+    $r->{user} ||= $r->uid_to_user($r->{session}{uid});
+    warn "User is : ".$r->{user};
+}
+
+=head2 login_user
+
+This method is useful for the situation in which you've just created a user
+from scratch, and want them to be logged in. You should pass in the user
+ID of the user you want to log in.
+
+=cut
+
+sub login_user {
+    my ($r, $uid, $sid) = @_;
+    $sid = 0 unless defined $sid;
+    my %session = ();
     my $session_class = $r->{config}{auth}{session_class} || 'Apache::Session::File';
     $session_class->require || die "Couldn't load session class $session_class";
     my $session_args  = $r->{config}{auth}{session_args} || {
@@ -73,28 +92,20 @@ sub get_user {
         tie %session, $session_class, $sid, $session_args;
     };
     if ($@) { # Object does not exist in data store!
-        my $cookie = Apache::Cookie->new($ar,
-            -name => $cookie_name,
-            -value => $session{_session_id},
-            -path => "/",
-            -expires => "-3M", # Now
-        );
-        $cookie->bake();
+        $r->_logout_cookie;
         return 0;
     }
     # Store the userid, and bake the cookie
-    $session{uid} = $uid;
-    my $cookie = Apache::Cookie->new($ar,
+    $session{uid} = $uid if $uid and not exists $session{uid};
+    warn "Session's uid is $session{uid}";
+    my $cookie_name = $r->config->{auth}{cookie_name} || "sessionid";
+    my $cookie = Apache::Cookie->new($r->{ar},
         -name => $cookie_name,
         -value => $session{_session_id},
         -expires => $r->config->{auth}{cookie_expiry} || '',
         -path => "/"
     );
     $cookie->bake();
-    if (!$new) {
-        # Grab the user object from the session data.
-        $r->{user} = $r->uid_to_user($session{uid});
-    }
     $r->{session} = \%session;
     return 1;
 }
@@ -148,6 +159,31 @@ sub uid_to_user {
     my $user_class = $r->config->{auth}{user_class} || ((ref $r)."::User");
     $user_class->require || die "Couldn't load user class $user_class";
     $user_class->retrieve(shift);
+}
+
+=head2 logout
+
+This method removes a user's session from the store and issues him a 
+cookie which expires the old cookie.
+
+=cut
+
+sub logout {
+    my $r = shift;
+    delete $r->{user};
+    tied(%{$r->{session}})->delete;
+    $r->_logout_cookie;
+}
+
+sub _logout_cookie {
+    my $r = shift;
+    my $cookie = Apache::Cookie->new($r->{ar},
+        -name => $r->config->{auth}{cookie_name},
+        -value => undef,
+        -path => "/",
+        -expires => "-10m"
+    );
+    $cookie->bake();
 }
 
 =head1 Session tracking without user authentication

@@ -1,5 +1,9 @@
 Revision history for Perl extension Maypole::Authentication::UserSessionCookie.
 
+1.2   Thu Apr 29 15:52:39 BST 2004
+    - Several fixes
+    - Two new methods
+
 1.1   Wed Mar  3 16:42:57 GMT 2004
     - Allow setting cookie expiry.
     - And reissue the cookie every request.
