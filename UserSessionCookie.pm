@@ -1,8 +1,9 @@
 package Maypole::Authentication::UserSessionCookie;
 use strict;
 use warnings;
-our $VERSION = '1.3';
+our $VERSION = '1.4';
 use Apache::Cookie;
+use URI;
 
 =head1 NAME
 
@@ -53,6 +54,7 @@ sub get_user {
     my %jar = Apache::Cookie->new($ar)->parse;
     my $cookie_name = $r->config->{auth}{cookie_name} || "sessionid";
     if (exists $jar{$cookie_name}) { $sid = $jar{$cookie_name}->value(); }
+    warn "SID from cookie: $sid";
     $sid = undef unless $sid; # Clear it, as 0 is a valid sid.
     my $new = !(defined $sid);
     my ($uid, $user);
@@ -60,10 +62,13 @@ sub get_user {
     if ($new) {
         # Go no further unless login credentials are right.
         ($uid, $r->{user}) = $r->check_credentials;
+        warn "Credentials OK";
         return 0 unless $uid;
     }
+    warn "Giving cookie";
     $r->login_user($uid, $sid) or return 0;
     $r->{user} ||= $r->uid_to_user($r->{session}{uid});
+    warn "User is : ".$r->{user};
 }
 
 =head2 login_user
@@ -88,17 +93,20 @@ sub login_user {
         tie %session, $session_class, $sid, $session_args;
     };
     if ($@) { # Object does not exist in data store!
-        $r->_logout_cookie;
-        return 0;
+        if ($@ =~ /does not exist in data store/) {
+            $r->_logout_cookie;
+            return 0;
+        } else { die $@ }
     }
     # Store the userid, and bake the cookie
     $session{uid} = $uid if $uid and not exists $session{uid};
+    warn "Session's uid is $session{uid}";
     my $cookie_name = $r->config->{auth}{cookie_name} || "sessionid";
     my $cookie = Apache::Cookie->new($r->{ar},
         -name => $cookie_name,
         -value => $session{_session_id},
         -expires => $r->config->{auth}{cookie_expiry} || '',
-        -path => "/"
+        -path => URI->new($r->config->{base_uri})->path,
     );
     $cookie->bake();
     $r->{session} = \%session;
@@ -130,7 +138,7 @@ sub check_credentials {
     $user_class->require || die "Couldn't load user class $user_class";
     my $user_field = $r->config->{auth}{user_field} || "user";
     my $pw_field = $r->config->{auth}{password_field} || "password";
-    return unless $r->{params}{$user_field} and $r->{params}{$pw_field};
+    return unless exists $r->{params}{$user_field} and exists $r->{params}{$pw_field};
     my @users = $user_class->search(
         $user_field => $r->{params}{$user_field}, 
         $pw_field   => $r->{params}{$pw_field}, 
@@ -173,9 +181,9 @@ sub logout {
 sub _logout_cookie {
     my $r = shift;
     my $cookie = Apache::Cookie->new($r->{ar},
-        -name => $r->config->{auth}{cookie_name},
+        -name => ($r->config->{auth}{cookie_name} || "session_id"),
         -value => undef,
-        -path => "/",
+        -path => URI->new($r->config->{base_uri})->path,
         -expires => "-10m"
     );
     $cookie->bake();
