@@ -1,7 +1,7 @@
 package Maypole::Authentication::UserSessionCookie;
 use strict;
 use warnings;
-our $VERSION = '0.01';
+our $VERSION = '1.0';
 use Apache::Cookie;
 
 =head1 NAME
@@ -69,7 +69,19 @@ sub get_user {
         Directory     => "/tmp/sessions",
         LockDirectory => "/tmp/sessionlock",
     };
-    tie %session, $session_class, $sid, $session_args;
+    eval {
+        tie %session, $session_class, $sid, $session_args;
+    };
+    if ($@) { # Object does not exist in data store!
+        my $cookie = Apache::Cookie->new($ar,
+            -name => $cookie_name,
+            -value => $session{_session_id},
+            -path => "/",
+            -expires => "-3M", # Now
+        );
+        $cookie->bake();
+        return 0;
+    }
     if ($new) {
         # Store the userid, and bake the cookie
         $session{uid} = $uid;
