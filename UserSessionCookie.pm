@@ -1,7 +1,7 @@
 package Maypole::Authentication::UserSessionCookie;
 use strict;
 use warnings;
-our $VERSION = '1.0';
+our $VERSION = '1.1';
 use Apache::Cookie;
 
 =head1 NAME
@@ -82,16 +82,16 @@ sub get_user {
         $cookie->bake();
         return 0;
     }
-    if ($new) {
-        # Store the userid, and bake the cookie
-        $session{uid} = $uid;
-        my $cookie = Apache::Cookie->new($ar,
-            -name => $cookie_name,
-            -value => $session{_session_id},
-            -path => "/"
-        );
-        $cookie->bake();
-    } else {
+    # Store the userid, and bake the cookie
+    $session{uid} = $uid;
+    my $cookie = Apache::Cookie->new($ar,
+        -name => $cookie_name,
+        -value => $session{_session_id},
+        -expires => $r->config->{auth}{cookie_expiry} || '',
+        -path => "/"
+    );
+    $cookie->bake();
+    if (!$new) {
         # Grab the user object from the session data.
         $r->{user} = $r->uid_to_user($session{uid});
     }
@@ -184,7 +184,8 @@ For instance, you might instead want to say:
     };
 
 The cookie name is retrieved from C<{auth}{cookie_name}> but defaults to
-"sessionid".
+"sessionid". It defaults to expiry at the end of the session, and this 
+can be set in C<{auth}{cookie_expiry}>.
 
 The user class is determined by C<{auth}{user_class}> in the
 configuration, but attempts to guess the right user class for your
