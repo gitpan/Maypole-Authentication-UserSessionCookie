@@ -1,5 +1,8 @@
 Revision history for Perl extension Maypole::Authentication::UserSessionCookie.
 
+1.3   Thu Apr 29 16:17:04 BST 2004
+    - Turn off debug warnings.
+
 1.2   Thu Apr 29 15:52:39 BST 2004
     - Several fixes
     - Two new methods

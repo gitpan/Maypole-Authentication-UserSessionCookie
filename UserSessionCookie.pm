@@ -1,7 +1,7 @@
 package Maypole::Authentication::UserSessionCookie;
 use strict;
 use warnings;
-our $VERSION = '1.2';
+our $VERSION = '1.3';
 use Apache::Cookie;
 
 =head1 NAME
@@ -53,7 +53,6 @@ sub get_user {
     my %jar = Apache::Cookie->new($ar)->parse;
     my $cookie_name = $r->config->{auth}{cookie_name} || "sessionid";
     if (exists $jar{$cookie_name}) { $sid = $jar{$cookie_name}->value(); }
-    warn "SID from cookie: $sid";
     $sid = undef unless $sid; # Clear it, as 0 is a valid sid.
     my $new = !(defined $sid);
     my ($uid, $user);
@@ -61,13 +60,10 @@ sub get_user {
     if ($new) {
         # Go no further unless login credentials are right.
         ($uid, $r->{user}) = $r->check_credentials;
-        warn "Credentials OK";
         return 0 unless $uid;
     }
-    warn "Giving cookie";
     $r->login_user($uid, $sid) or return 0;
     $r->{user} ||= $r->uid_to_user($r->{session}{uid});
-    warn "User is : ".$r->{user};
 }
 
 =head2 login_user
@@ -97,7 +93,6 @@ sub login_user {
     }
     # Store the userid, and bake the cookie
     $session{uid} = $uid if $uid and not exists $session{uid};
-    warn "Session's uid is $session{uid}";
     my $cookie_name = $r->config->{auth}{cookie_name} || "sessionid";
     my $cookie = Apache::Cookie->new($r->{ar},
         -name => $cookie_name,
